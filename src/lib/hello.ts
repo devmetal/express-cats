@@ -1,3 +1,7 @@
+import { CatsInMemory } from './cache/CatsInMemory';
+
 const send = (who: string): string => `Hello ${who}`;
 
-module.exports = send;
+const cats = new CatsInMemory();
+
+export default send;
