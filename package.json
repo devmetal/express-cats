@@ -59,12 +59,14 @@
     "testEnvironment": "node",
     "collectCoverage": true,
     "collectCoverageFrom": [
-      "**/*.{ts}",
+      "**/*.ts",
       "!**/node_modules/**",
       "!coverage/**",
       "!example/**",
       "!jest-setup.ts"
     ],
-    "setupTestFrameworkScriptFile": "./jest-setup.ts"
+    "setupFilesAfterEnv": [
+      "./jest-setup.ts"
+    ]
   }
 }
