@@ -32,6 +32,13 @@ class CatsInFiles implements ICatCache {
       this.writeHeaders([header]);
       return true;
     }
+
+    const [, lastStart, lastLength] = headers[headers.length - 1];
+    const position = lastStart + lastLength;
+    fs.writeSync(cache, v, 0, bLength, position);
+    const header: CatHeader = [`${k}`, position, bLength];
+    this.writeHeaders([...headers, header]);
+    return true;
   };
 
   public getCat = (k: number): Buffer => {
@@ -52,19 +59,41 @@ class CatsInFiles implements ICatCache {
     return this.getHeaders().some(h => h[0] === `${k}`);
   };
 
+  public destroyCats = (): boolean => {
+    if (cache === null) {
+      return false;
+    }
+
+    fs.closeSync(cache);
+    fs.unlinkSync(fName);
+  };
+
   private getHeaders = (): CatHeader[] => {
     const bf = Buffer.alloc(hSize);
     fs.readSync(cache, bf, 0, hSize, 0);
-    return bf
-      .toString()
-      .split('\n')
-      .map(h => h.split(',') as CatHeader);
+    const headersRaw = bf.toString();
+
+    if (headersRaw.includes('END')) {
+      return headersRaw
+        .split('END')[0]
+        .split('\n')
+        .map(rh => {
+          const h = rh.split(',');
+          const code: string = `${h[0]}`;
+          const from: number = parseInt(h[1], 10);
+          const len: number = parseInt(h[2], 10);
+
+          return [code, from, len] as CatHeader;
+        });
+    }
+
+    return [];
   };
 
   private writeHeaders = (headers: CatHeader[]): void => {
     const hs = headers.map(h => h.join(',')).join('\n');
     const bf = Buffer.alloc(hSize);
-    bf.write(hs);
+    bf.write(`${hs}END`);
     fs.writeSync(cache, bf, 0, hSize, 0);
   };
 }
