@@ -4,6 +4,28 @@ import { ICatCache } from './ICatCache';
 
 type CatHeader = [string, number, number];
 
+type CatNameGetter = () => string;
+type CatPosiGetter = () => number;
+type CatLengthGetter = () => number;
+
+type CatHeaderGetter = {
+  name: CatNameGetter;
+  posi: CatPosiGetter;
+  length: CatLengthGetter;
+};
+
+const getHeader = (h: CatHeader): CatHeaderGetter => ({
+  name: (): string => h[0],
+  posi: (): number => h[1],
+  length: (): number => h[2],
+});
+
+const makeHeader = (name: string, posi: number, length: number): CatHeader => [
+  name,
+  posi,
+  length,
+];
+
 const fName: PathLike = path.join(process.cwd(), '.cats');
 const hSize: number = 512;
 
@@ -12,32 +34,34 @@ let cache: number = null;
 class CatsInFiles implements ICatCache {
   constructor() {
     if (cache === null) {
-      // Mode a+: Open file for reading and appending.
-      // The file is created if it does not exist.
       cache = fs.openSync(fName, 'a+');
     }
   }
 
-  public setCat = (k: number, v: Buffer): boolean => {
+  public setCat = (key: number, value: Buffer): boolean => {
     const headers = this.getHeaders();
-    if (headers.some(h => h[0] === `${k}`)) {
+    const strKey = `${key}`;
+    const n = headers.length;
+
+    if (headers.some(h => getHeader(h).name() === strKey)) {
       return false;
     }
 
-    const bLength = v.byteLength;
+    const bLength = value.byteLength;
+    let position: number;
 
-    if (!headers.length) {
-      fs.writeSync(cache, v, 0, bLength, hSize);
-      const header: CatHeader = [`${k}`, hSize, bLength];
-      this.writeHeaders([header]);
-      return true;
+    if (!n) {
+      position = hSize;
+    } else {
+      const lastHeader = getHeader(headers[n - 1]);
+      position = lastHeader.posi() + lastHeader.length();
     }
 
-    const [, lastStart, lastLength] = headers[headers.length - 1];
-    const position = lastStart + lastLength;
-    fs.writeSync(cache, v, 0, bLength, position);
-    const header: CatHeader = [`${k}`, position, bLength];
-    this.writeHeaders([...headers, header]);
+    fs.writeSync(cache, value, 0, bLength, position);
+
+    const newHeader: CatHeader = makeHeader(strKey, position, bLength);
+    this.writeHeaders([...headers, newHeader]);
+
     return true;
   };
 
