@@ -2,65 +2,62 @@ import fs, { PathLike, stat } from 'fs';
 import path from 'path';
 import { ICatCache } from './ICatCache';
 
-type CatHeader = [string, number, number];
-
-type CatNameGetter = () => string;
-type CatPosiGetter = () => number;
-type CatLengthGetter = () => number;
-
-type CatHeaderGetter = {
-  name: CatNameGetter;
-  posi: CatPosiGetter;
-  length: CatLengthGetter;
-};
-
-const getHeader = (h: CatHeader): CatHeaderGetter => ({
-  name: (): string => h[0],
-  posi: (): number => h[1],
-  length: (): number => h[2],
-});
-
-const makeHeader = (name: string, posi: number, length: number): CatHeader => [
-  name,
-  posi,
-  length,
-];
-
-const fName: PathLike = path.join(process.cwd(), '.cats');
-const hSize: number = 512;
-
-let cache: number = null;
+class CatHeader {
+  code: number;
+  size: number;
+  position: number;
+}
 
 class CatsInFiles implements ICatCache {
-  constructor() {
-    if (cache === null) {
-      cache = fs.openSync(fName, 'a+');
+  private static instance: CatsInFiles;
+
+  public static getInstance(): CatsInFiles {
+    if (undefined === CatsInFiles.instance) {
+      CatsInFiles.instance = new CatsInFiles();
     }
+    return CatsInFiles.instance;
+  }
+
+  private cacheHeadersSize: number = 512;
+
+  private cacheFileName: PathLike;
+
+  private cacheFilePtr: number;
+
+  private cacheHeaders: CatHeader[];
+
+  private constructor() {
+    this.cacheFileName = path.join(process.cwd(), '.cats');
+    this.cacheFilePtr = fs.openSync(this.cacheFileName, 'a+');
+    this.cacheHeaders = this.getHeaders();
   }
 
   public setCat = (key: number, value: Buffer): boolean => {
-    const headers = this.getHeaders();
-    const strKey = `${key}`;
-    const n = headers.length;
+    const n = this.cacheHeaders.length;
 
-    if (headers.some(h => getHeader(h).name() === strKey)) {
+    if (this.hasCat(key)) {
       return false;
     }
 
-    const bLength = value.byteLength;
+    const size = value.byteLength;
     let position: number;
 
     if (!n) {
-      position = hSize;
+      position = this.cacheHeadersSize;
     } else {
-      const lastHeader = getHeader(headers[n - 1]);
-      position = lastHeader.posi() + lastHeader.length();
+      const lastHeader = this.cacheHeaders[n - 1];
+      position = lastHeader.position + lastHeader.size;
     }
 
-    fs.writeSync(cache, value, 0, bLength, position);
+    fs.writeSync(this.cacheFilePtr, value, 0, size, position);
 
-    const newHeader: CatHeader = makeHeader(strKey, position, bLength);
-    this.writeHeaders([...headers, newHeader]);
+    const newHeader: CatHeader = new CatHeader();
+    newHeader.size = size;
+    newHeader.position = position;
+    newHeader.code = key;
+
+    this.cacheHeaders = [...this.cacheHeaders, newHeader];
+    this.writeHeaders();
 
     return true;
   };
@@ -80,7 +77,7 @@ class CatsInFiles implements ICatCache {
   };
 
   public hasCat = (k: number): boolean => {
-    return this.getHeaders().some(h => h[0] === `${k}`);
+    return this.cacheHeaders.some(h => h.code === k);
   };
 
   public destroyCats = (): boolean => {
@@ -114,7 +111,7 @@ class CatsInFiles implements ICatCache {
     return [];
   };
 
-  private writeHeaders = (headers: CatHeader[]): void => {
+  private writeHeaders = (): void => {
     const hs = headers.map(h => h.join(',')).join('\n');
     const bf = Buffer.alloc(hSize);
     bf.write(`${hs}END`);
